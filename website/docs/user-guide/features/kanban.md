@@ -59,7 +59,7 @@ They coexist: a kanban worker may call `delegate_task` internally during its run
   (e.g. one per project, repo, or domain); see [Boards (multi-project)](#boards-multi-project)
   below. Single-project users stay on the `default` board and never see the
   word "board" outside this docs section.
-- **Task** — a row with title, optional body, one assignee (a profile name), status (`triage | todo | ready | running | blocked | done | archived`), optional tenant namespace, optional idempotency key (dedup for retried automation).
+- **Task** — a row with title, optional body, one assignee (a profile name), status (`triage | todo | scheduled | ready | running | blocked | review | done | archived`), optional tenant namespace, optional idempotency key (dedup for retried automation).
 - **Link** — `task_links` row recording a parent → child dependency. The dispatcher promotes `todo → ready` when all parents are `done`.
 - **Comment** — the inter-agent protocol. Agents and humans append comments; when a worker is (re-)spawned it reads the full comment thread as part of its context.
 - **Workspace** — the directory a worker operates in. Three kinds:
@@ -133,6 +133,41 @@ Slugs are validated: lowercase alphanumerics + hyphens + underscores, 1-64
 chars, must start with alphanumeric. Uppercase input is auto-downcased.
 Anything else (slashes, spaces, dots, `..`) is rejected at the CLI layer
 so path-traversal tricks can't name a board.
+
+### Syncing a repo-local Kanban.md
+
+For projects that keep their own `Kanban.md`, that file remains the
+canonical project-management record. Hermes can import it into a board so the
+dashboard and dispatcher can see the work, but the SQLite DB is only a synced
+execution/cache layer.
+
+```bash
+# Preview changes without creating or updating the board DB.
+hermes kanban sync-markdown ./Kanban.md --board my-project --dry-run
+
+# Import cards into an existing board and stamp each task with the repo root.
+hermes kanban sync-markdown ./Kanban.md \
+    --board my-project \
+    --project-root C:/path/to/project
+```
+
+The importer recognizes checkbox cards under these headings: `Triage`,
+`Todo`, `Scheduled`, `Ready`, `Running`, `Blocked`, `Review`, and `Done`.
+Cards should carry stable hidden IDs such as
+`<!-- hkb:t_my_project_task -->`; those IDs become the Hermes task IDs and
+prevent duplicates on repeated syncs. Cards without hidden IDs are reported in
+dry-run and skipped in write mode rather than guessed.
+
+Simple indented metadata lines are imported conservatively:
+`assignee`, `priority`, and `workspace` map to existing task fields, while
+other metadata such as `goal` and `acceptance` is copied into the task body.
+This first slice is one-way only; it does not write DB edits back to
+`Kanban.md`, and it does not create boards automatically. Create non-default
+boards first with `hermes kanban boards create <slug>`; `--dry-run` validates
+the board exists and exits non-zero for a missing board instead of creating it.
+Importing a card under
+`Running` mirrors the markdown lane in the DB, but it does not create an
+active dispatcher claim or spawn a worker.
 
 ### Managing boards from the dashboard
 

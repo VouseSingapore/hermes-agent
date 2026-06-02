@@ -384,6 +384,39 @@ def build_parser(parent_subparsers: argparse._SubParsersAction) -> argparse.Argu
     p_swarm.add_argument("--idempotency-key", default=None, help="Dedup key for the root card")
     p_swarm.add_argument("--json", action="store_true", help="Emit JSON output")
 
+    # --- sync-markdown ---
+    p_sync_md = sub.add_parser(
+        "sync-markdown",
+        help="Import a repo-local Kanban.md into a Hermes Kanban board",
+        description=(
+            "One-way sync from a project-owned Kanban.md into the SQLite "
+            "board. Markdown remains canonical; the DB is only the "
+            "execution/cache layer."
+        ),
+    )
+    p_sync_md.add_argument("path", help="Path to the repo-local Kanban.md")
+    p_sync_md.add_argument(
+        "--board",
+        default=argparse.SUPPRESS,
+        metavar="<slug>",
+        help=(
+            "Board slug to import into. This mirrors the global "
+            "`hermes kanban --board <slug>` flag, but is accepted here so "
+            "`hermes kanban sync-markdown PATH --board <slug>` works too."
+        ),
+    )
+    p_sync_md.add_argument(
+        "--project-root",
+        default=None,
+        help="Project checkout/root path to stamp as workspace_kind=dir",
+    )
+    p_sync_md.add_argument(
+        "--dry-run",
+        action="store_true",
+        help="Report creates/updates/skips without mutating the DB",
+    )
+    p_sync_md.add_argument("--json", action="store_true", help="Emit JSON output")
+
     # --- list ---
     p_list = sub.add_parser("list", aliases=["ls"], help="List tasks")
     p_list.add_argument("--mine", action="store_true",
@@ -914,16 +947,19 @@ def kanban_command(args: argparse.Namespace) -> int:
     # schema creation; `create` / `list` / every other command would
     # error out on a fresh install.
     with board_scope:
-        try:
-            kb.init_db()
-        except Exception as exc:
-            print(f"kanban: could not initialize database: {exc}", file=sys.stderr)
-            return 1
+        skip_init = action == "sync-markdown" and bool(getattr(args, "dry_run", False))
+        if not skip_init:
+            try:
+                kb.init_db()
+            except Exception as exc:
+                print(f"kanban: could not initialize database: {exc}", file=sys.stderr)
+                return 1
 
         handlers = {
             "init":     _cmd_init,
             "create":   _cmd_create,
             "swarm":    _cmd_swarm,
+            "sync-markdown": _cmd_sync_markdown,
             "list":     _cmd_list,
             "ls":       _cmd_list,
             "show":     _cmd_show,
@@ -1395,6 +1431,29 @@ def _cmd_swarm(args: argparse.Namespace) -> int:
         print("Workers: " + ", ".join(created.worker_ids))
         print(f"Verifier: {created.verifier_id}")
         print(f"Synthesizer: {created.synthesizer_id}")
+    return 0
+
+
+def _cmd_sync_markdown(args: argparse.Namespace) -> int:
+    from hermes_cli import kanban_markdown_sync as kms
+
+    try:
+        result = kms.sync_markdown_file(
+            args.path,
+            board=getattr(args, "board", None),
+            project_root=getattr(args, "project_root", None),
+            dry_run=bool(getattr(args, "dry_run", False)),
+        )
+    except FileNotFoundError:
+        print(f"kanban sync-markdown: no such file: {args.path}", file=sys.stderr)
+        return 1
+    except OSError as exc:
+        print(f"kanban sync-markdown: cannot read {args.path}: {exc}", file=sys.stderr)
+        return 1
+    if getattr(args, "json", False):
+        print(kms.result_to_json(result))
+    else:
+        print(kms.format_sync_result(result))
     return 0
 
 
