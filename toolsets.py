@@ -50,7 +50,7 @@ _HERMES_CORE_TOOLS = [
     # Text-to-speech
     "text_to_speech",
     # Planning & memory
-    "todo", "memory",
+    "todo", "memory", "search_memory", "get_memory_note",
     # Session history search
     "session_search",
     # Clarifying questions
@@ -214,8 +214,8 @@ TOOLSETS = {
     },
     
     "memory": {
-        "description": "Persistent memory across sessions (personal notes + user profile)",
-        "tools": ["memory"],
+        "description": "Persistent memory across sessions plus curated-vault search",
+        "tools": ["memory", "search_memory", "get_memory_note"],
         "includes": []
     },
 
@@ -412,7 +412,7 @@ TOOLSETS = {
             "browser_press", "browser_get_images",
             "browser_vision", "browser_console", "browser_cdp", "browser_dialog",
             # Planning & memory
-            "todo", "memory",
+            "todo", "memory", "search_memory", "get_memory_note",
             # Session history search
             "session_search",
             # Code execution + delegation

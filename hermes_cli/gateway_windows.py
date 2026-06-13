@@ -554,7 +554,19 @@ def _resolve_detached_python(python_exe: str) -> tuple[str, Path, list[str]]:
         base_pythonw = Path(home) / "pythonw.exe"
         site_packages = venv_dir / "Lib" / "site-packages"
         if base_pythonw.exists() and site_packages.exists():
-            return (str(base_pythonw), venv_dir, [str(site_packages)])
+            # The base interpreter doesn't process the venv's .pth files
+            # (the venv site-packages is a bare PYTHONPATH entry, not a
+            # site dir), so pywin32's pywin32.pth never runs and
+            # ``import pywintypes`` fails — which cascades into
+            # ``import mcp`` failing and disables ALL MCP tools in the
+            # detached gateway.  Add the pywin32 module + DLL dirs
+            # explicitly (mirroring pywin32.pth) so MCP works detached.
+            extra = [str(site_packages)]
+            for sub in ("win32", "win32/lib", "Pythonwin", "pywin32_system32"):
+                p = site_packages / sub
+                if p.exists():
+                    extra.append(str(p))
+            return (str(base_pythonw), venv_dir, extra)
 
     return (windowed, venv_dir, [])
 
